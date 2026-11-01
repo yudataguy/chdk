@@ -29,8 +29,28 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build SX50 HS ${{ matrix.sub }}
         run: tools/battsave/build_sx50.sh ${{ matrix.sub }}
+      - name: Battery Saver is linked in (control for check_inert)
+        run: |
+          docker run --rm -v "$PWD":/srv/src chdkbuild \
+            arm-none-eabi-nm platform/sx50hs/sub/${{ matrix.sub }}/main.elf | grep -q battsave_tick
       - uses: actions/upload-artifact@v4
         with:
           name: chdk-sx50hs-${{ matrix.sub }}
           path: bin/*.zip
           if-no-files-found: error
+
+  stock-ports-inert:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: a560,   sub: 100a }   # VxWorks
+          - { platform: sx40hs, sub: 100g }   # DryOS, same era as SX50
+          - { platform: g7x,    sub: 100d }   # DIGIC 6 / thumb2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ${{ matrix.platform }} ${{ matrix.sub }}
+        run: tools/battsave/build.sh ${{ matrix.platform }} ${{ matrix.sub }}
+      - name: No Battery Saver code linked
+        run: tools/battsave/check_inert.sh ${{ matrix.platform }} ${{ matrix.sub }}

@@ -319,8 +319,134 @@ static void test_wake_retry_then_fail(void)
     CHECK(fake.led_on == 1);
 }
 
+// ---------------------------------------------------------------- safety
+
+static void test_power_off_after_t3(void)
+{
+    unsigned d = go_deep(cfg_default());
+    CHECK(d == 180000);
+    run_for(7200000 - 20);
+    tick_at(7199999, d);
+    CHECK(fake.powered_off == 0);
+    CHECK(battsave_state() == BS_DEEP);
+    tick_at(7200000, d);
+    CHECK(fake.powered_off == 1);
+    CHECK(battsave_state() == BS_POWER_OFF);
+}
+
+static void test_t3_never(void)
+{
+    battsave_config_t c = cfg_default();
+    c.t3_ms = BS_NEVER;
+    go_deep(c);
+    run_for(48 * HOUR_MS);
+    CHECK(fake.powered_off == 0);
+    CHECK(battsave_state() == BS_DEEP);
+}
+
+static void test_low_battery_powers_off(void)
+{
+    battsave_config_t c = cfg_default();
+    c.low_batt_mv = 3300;
+    go_deep(c);
+    run_for(1000);
+    CHECK(fake.powered_off == 0);
+    fake.vbatt = 3299;
+    run_for(20);
+    CHECK(fake.powered_off == 1);
+    CHECK(battsave_state() == BS_POWER_OFF);
+
+    c.low_batt_mv = 0;
+    go_deep(c);
+    fake.vbatt = 3000;
+    run_for(10000);
+    CHECK(fake.powered_off == 0);
+}
+
+static void test_low_battery_ignored_when_awake(void)
+{
+    battsave_config_t c = cfg_default();
+    c.low_batt_mv = 3300;
+    setup(c, 0);
+    fake.vbatt = 3000;
+    run_for(10000);
+    CHECK(battsave_state() == BS_AWAKE);
+    CHECK(fake.powered_off == 0);
+}
+
+static void test_inhibit_in_deep_wakes(void)
+{
+    go_deep(cfg_default());
+    fake.rec_mode_follows = 0;
+    fake.inhibit = 1;
+    run_for(20);
+    CHECK(battsave_state() == BS_WAKING);
+    CHECK(fake.set_rec_calls == 2);
+}
+
+static void test_disable_while_asleep_restores(void)
+{
+    battsave_config_t off = cfg_default();
+    off.enabled = 0;
+
+    setup(cfg_default(), 0);
+    run_for(31000);
+    CHECK(battsave_state() == BS_LIGHT);
+    battsave_set_config(&off, now);
+    CHECK(battsave_state() == BS_AWAKE);
+    CHECK(fake.display_on == 1);
+    CHECK(fake.led_on == 1);
+
+    go_deep(cfg_default());
+    battsave_set_config(&off, now);
+    CHECK(battsave_state() == BS_WAKING);
+    run_for(20);
+    CHECK(battsave_state() == BS_AWAKE);
+    CHECK(fake.display_on == 1);
+    CHECK(fake.led_on == 1);
+    CHECK(fake.set_zoom_last == 42);
+    run_for(HOUR_MS);
+    CHECK(battsave_state() == BS_AWAKE);
+}
+
+static void test_config_from_menu(void)
+{
+    battsave_config_t c = cfg_default();
+    battsave_config_from_menu(&c, 1, BS_T1_DEFAULT_IDX, BS_T2_DEFAULT_IDX, BS_T3_DEFAULT_IDX, 1);
+    CHECK(c.enabled == 1);
+    CHECK(c.t1_ms == 30000);
+    CHECK(c.t2_ms == 180000);
+    CHECK(c.t3_ms == 7200000);
+    CHECK(c.blink == 1);
+
+    battsave_config_from_menu(&c, 0, 0, 4, 4, 0);
+    CHECK(c.enabled == 0);
+    CHECK(c.t1_ms == 10000);
+    CHECK(c.t2_ms == BS_NEVER);
+    CHECK(c.t3_ms == BS_NEVER);
+    CHECK(c.blink == 0);
+
+    battsave_config_from_menu(&c, 1, 3, 3, 3, 1);
+    CHECK(c.t1_ms == 120000);
+    CHECK(c.t2_ms == 600000);
+    CHECK(c.t3_ms == 4 * HOUR_MS);
+
+    battsave_config_from_menu(&c, 1, 9, -1, 99, 1);
+    CHECK(c.t1_ms == 30000);
+    CHECK(c.t2_ms == 180000);
+    CHECK(c.t3_ms == 7200000);
+}
+
 int main(void)
 {
+    test_power_off_after_t3();
+    test_t3_never();
+    test_low_battery_powers_off();
+    test_low_battery_ignored_when_awake();
+    test_inhibit_in_deep_wakes();
+    test_disable_while_asleep_restores();
+    test_config_from_menu();
+
     test_deep_after_t2();
     test_t2_never_stays_light();
     test_t2_le_t1_goes_straight_deep();

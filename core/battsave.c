@@ -82,10 +82,33 @@ void battsave_init(const battsave_hw_t *h, const battsave_config_t *c, unsigned 
     set_state(BS_AWAKE, now_ms);
 }
 
+static void power_off(unsigned now_ms)
+{
+    set_state(BS_POWER_OFF, now_ms);
+    hw->power_off();
+}
+
 void battsave_set_config(const battsave_config_t *c, unsigned now_ms)
 {
-    (void)now_ms;
     cfg = *c;
+    if (cfg.enabled || !hw)
+        return;
+    // turned off while asleep: bring the camera back now
+    switch (state) {
+    case BS_LIGHT:
+        wake_light(now_ms);
+        hw->led(1);
+        break;
+    case BS_DEEP:
+        start_wake(now_ms);
+        break;
+    case BS_WAKE_FAILED:
+        hw->led(1);
+        set_state(BS_AWAKE, now_ms);
+        break;
+    default:
+        break;
+    }
 }
 
 // sleep must not start (or continue) while the camera is busy, or while the
@@ -97,7 +120,10 @@ static int awake_inhibited(void)
 
 void battsave_tick(unsigned now_ms)
 {
-    if (!hw || !cfg.enabled)
+    if (!hw)
+        return;
+    // when disabled, only finish a wake that is already in progress
+    if (!cfg.enabled && state != BS_WAKING)
         return;
 
     switch (state) {
@@ -116,6 +142,15 @@ void battsave_tick(unsigned now_ms)
             enter_deep(now_ms);
         break;
     case BS_DEEP:
+        if (hw->inhibit()) {
+            start_wake(now_ms);
+            break;
+        }
+        if ((cfg.t3_ms != BS_NEVER && now_ms - state_since_ms >= cfg.t3_ms)
+            || (cfg.low_batt_mv && hw->vbatt_mv() < cfg.low_batt_mv)) {
+            power_off(now_ms);
+            break;
+        }
         if (cfg.blink)
             hw->led((now_ms - state_since_ms) % BS_BLINK_PERIOD_MS < BS_BLINK_ON_MS);
         break;
@@ -177,4 +212,24 @@ int battsave_overlays_paused(void)
 int battsave_enabled(void)
 {
     return cfg.enabled;
+}
+
+static const unsigned t1_table[] = { 10000u, 30000u, 60000u, 120000u };
+static const unsigned t2_table[] = { 60000u, 180000u, 300000u, 600000u, BS_NEVER };
+static const unsigned t3_table[] = { 1800000u, 3600000u, 7200000u, 14400000u, BS_NEVER };
+
+#define BS_COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
+
+static unsigned pick(const unsigned *table, int count, int idx, int def)
+{
+    return table[(idx >= 0 && idx < count) ? idx : def];
+}
+
+void battsave_config_from_menu(battsave_config_t *out, int enabled, int t1_idx, int t2_idx, int t3_idx, int blink)
+{
+    out->enabled = enabled != 0;
+    out->t1_ms = pick(t1_table, BS_COUNT(t1_table), t1_idx, BS_T1_DEFAULT_IDX);
+    out->t2_ms = pick(t2_table, BS_COUNT(t2_table), t2_idx, BS_T2_DEFAULT_IDX);
+    out->t3_ms = pick(t3_table, BS_COUNT(t3_table), t3_idx, BS_T3_DEFAULT_IDX);
+    out->blink = blink != 0;
 }

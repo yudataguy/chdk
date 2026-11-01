@@ -49,4 +49,12 @@ battsave_state_t battsave_state(void);
 int              battsave_overlays_paused(void);                  // 1 in LIGHT, DEEP, WAKING
 int              battsave_enabled(void);
 
+// Menu index -> config timing fields.
+// T1 {10s,30s,1m,2m}; T2 {1m,3m,5m,10m,never}; T3 {30m,1h,2h,4h,never}.
+// Out-of-range indices fall back to the default index.
+#define BS_T1_DEFAULT_IDX 1
+#define BS_T2_DEFAULT_IDX 1
+#define BS_T3_DEFAULT_IDX 2
+void battsave_config_from_menu(battsave_config_t *out, int enabled, int t1_idx, int t2_idx, int t3_idx, int blink);
+
 #endif

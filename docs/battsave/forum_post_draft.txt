@@ -1,0 +1,43 @@
+Forum: https://chdk.setepontos.com/  ->  "General Discussion and Assistance" (or "Feature Requests")
+Subject: Battery Saver: tiered idle sleep (screen off -> lens retract -> power off), SX50 HS testers wanted
+
+---- paste below this line (SMF BBCode) ----
+
+Hi all,
+
+I've been working on a [b]Battery Saver[/b] for CHDK, to make the camera last longer when it's left on and idle, without losing the "ready to shoot" feel. It's in a public fork, based on trunk r6346 (via the eoschdk git mirror):
+
+[url=https://github.com/yudataguy/chdk]https://github.com/yudataguy/chdk[/url]
+
+[b]What it does[/b] (all times configurable; feature is off by default)
+[list]
+[li][b]30 s idle -> screen off.[/b] Display and backlight off, CHDK overlays/histogram paused. Any key wakes it, and a full press still shoots right away.[/li]
+[li][b]3 min idle -> deep sleep.[/b] Switches to playback so the sensor is off and the lens retracts (with Lens Retract = 0 s), and saves the zoom. The power LED gives a 50 ms blink every 3 s so you can tell it's asleep and not off. On wake the waking press is swallowed, it goes back to rec mode and restores the zoom.[/li]
+[li][b]2 h in deep sleep -> power off.[/b] Also powers off early if the battery stays under batt_volts_min for 3 readings, 10 s apart.[/li]
+[/list]
+It never sleeps while a script runs, during video, with USB connected, with the CHDK menu open, or while you're in playback yourself. Canon auto power-off is blocked only while Battery Saver itself can power off (it uses conf_update_prevent_shutdown). Dial turns count as activity. There's an optional "Log to card" that writes state changes and battery voltage to A/BATTSAVE.LOG.
+
+[b]How it's built[/b]
+[list]
+[li]core/battsave.c is a pure state machine: time is passed in, and hardware is reached only through a small table of function pointers. That lets it be unit-tested on a PC (test/host: 44 tests, 176 checks).[/li]
+[li]core/battsave_hw.c binds it to existing CHDK calls: shooting_set_playrec_mode, TurnOn/OffDisplay and backlight, camera_set_led, shooting_get/set_zoom, stat_get_vbatt, shutdown.[/li]
+[li]It's enabled per port in platform_camera.h: CAM_HAS_BATTSAVE, CAM_BATTSAVE_LED, CAM_BATTSAVE_DIAL_POS (optional), and CAM_BATTSAVE_NO_DEEP. Ports that don't define these link none of the code. CI checks that on A560, SX40 HS and G7 X.[/li]
+[li]Conf IDs 270-275 at the end of Conf, CONF_VERSION 3.8. Lang strings 688-694.[/li]
+[/list]
+
+[b]Status[/b]
+It builds cleanly for SX50 HS 1.00b and 1.00c (GitHub Actions, using the usual arm-none-eabi-gcc), but [b]it hasn't been run on a camera yet[/b]. Builds are under the repo's Actions tab, and test/README_final_check.md has a 10-minute checklist plus an overnight run.
+
+[b]Questions for people who know the internals[/b]
+[list]
+[li]Does switching to playback actually save much over rec mode with the display off on DIGIC 5? I have a Lua probe (test/battsave_probe.lua) to measure it, but if someone already knows the answer I'd love to hear it.[/li]
+[li]Is reading rear_dial_position directly from the spytask safe, to detect dial movement without consuming get_jogdial_direction()?[/li]
+[li]Conf/lang IDs: is there a convention for picking these so they don't clash with trunk later?[/li]
+[li]Any ports where shooting_set_playrec_mode from the spytask is known to be flaky? Those would get CAM_BATTSAVE_NO_DEEP.[/li]
+[/list]
+
+If anyone has an SX50 HS and is willing to try it, results of any kind are very welcome, failures especially. If it turns out useful I'm happy to rework it into a patch for trunk.
+
+Thanks!
+
+[i]Disclosure: developed with help from an AI coding assistant (Claude). The tests and CI are in the repo.[/i]

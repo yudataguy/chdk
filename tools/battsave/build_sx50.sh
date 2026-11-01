@@ -24,6 +24,8 @@ if [ "$(uname)" = "Linux" ]; then
   uid_flag=(--user "$(id -u):$(id -g)")
 fi
 
+mkdir -p bin   # git does not track the empty bin/ dir the CHDK makefiles expect
+
 for sub in "${subs[@]}"; do
   echo "=== sx50hs $sub"
   docker run --rm "${platform_flag[@]}" "${uid_flag[@]}" -v "$PWD":/srv/src "$image" \

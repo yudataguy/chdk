@@ -50,9 +50,23 @@ static int hw_inhibit(void)
         || get_usb_bit();
 }
 
+static int prevent_shutdown_wanted;
+
+static void hw_prevent_shutdown(int on)
+{
+    prevent_shutdown_wanted = on;
+    conf_update_prevent_shutdown();
+}
+
+int battsave_hw_prevent_shutdown(void)
+{
+    return prevent_shutdown_wanted;
+}
+
 static const battsave_hw_t battsave_hw = {
     hw_display, hw_led, hw_is_rec_mode, hw_set_rec_mode,
-    hw_get_zoom, hw_set_zoom, hw_power_off, hw_vbatt_mv, hw_inhibit
+    hw_get_zoom, hw_set_zoom, hw_power_off, hw_vbatt_mv, hw_inhibit,
+    hw_prevent_shutdown
 };
 
 static void config_from_conf(battsave_config_t *c)
@@ -80,7 +94,6 @@ void battsave_hw_init(void)
     battsave_config_t c;
     config_from_conf(&c);
     battsave_init(&battsave_hw, &c, (unsigned)get_tick_count());
-    conf_update_prevent_shutdown();
 }
 
 void battsave_hw_apply_conf(void)

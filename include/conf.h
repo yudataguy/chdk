@@ -76,7 +76,7 @@ typedef struct {
 // Don't make any of the entries conditionally compiled in - this will change the offsets between cameras causing problems with
 // making the modules camera/platform independent
 
-#define CONF_VERSION            {3,6}       // Version for Conf structure
+#define CONF_VERSION            {3,7}       // Version for Conf structure
 
 typedef struct
 {
@@ -247,13 +247,6 @@ typedef struct
     int use_zoom_mf;
     long alt_mode_button; //for S-series
     int alt_prevent_shutdown;
-
-    // Battery Saver (menu indices, see include/battsave.h)
-    int battsave_enable;
-    int battsave_t1;
-    int battsave_t2;
-    int battsave_t3;
-    int battsave_blink;
 
     int show_grid_lines;
     char grid_lines_file[CONF_STR_LEN];
@@ -486,6 +479,14 @@ typedef struct
     int raw_ev_histo_save_log;
     int raw_ev_histo_ettr_pct;
     int raw_ev_histo_save_for_image;
+
+    // Battery Saver (menu indices, see include/battsave.h).
+    // Added at the end (minor CONF_VERSION bump); present on all ports to keep offsets identical.
+    int battsave_enable;
+    int battsave_t1;
+    int battsave_t2;
+    int battsave_t3;
+    int battsave_blink;
 
 } Conf;
 

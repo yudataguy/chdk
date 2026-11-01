@@ -10,6 +10,7 @@ static int checks;
 
 #define MIN_MS  (60u * 1000u)
 #define HOUR_MS (60u * MIN_MS)
+#define BS_LENS_SETTLE_MS_EXPECTED 1000u   // wait after rec mode returns before restoring zoom
 
 static battsave_config_t cfg_default(void)
 {
@@ -239,7 +240,7 @@ static void test_deep_wake_restores(void)
     CHECK(battsave_key(1, now) == 1);
     CHECK(battsave_state() == BS_WAKING);
     CHECK(fake.set_rec_calls == 2);
-    run_for(20);
+    run_for(BS_LENS_SETTLE_MS_EXPECTED + 20);
     CHECK(battsave_state() == BS_AWAKE);
     CHECK(fake.display_on == 1);
     CHECK(fake.led_on == 1);
@@ -276,7 +277,7 @@ static void test_zoom_skip_if_moved(void)
     run_for(500);
     fake.zoom = 10;         // user zoomed while the lens was extending
     fake.rec_mode = 1;
-    run_for(20);
+    run_for(BS_LENS_SETTLE_MS_EXPECTED + 20);
     CHECK(battsave_state() == BS_AWAKE);
     CHECK(fake.set_zoom_calls == 0);
 }
@@ -287,7 +288,7 @@ static void test_zoom_disallowed(void)
     c.zoom_allowed = 0;
     go_deep(c);
     battsave_key(1, now);
-    run_for(100);
+    run_for(BS_LENS_SETTLE_MS_EXPECTED + 100);
     CHECK(battsave_state() == BS_AWAKE);
     CHECK(fake.get_zoom_calls == 0);
     CHECK(fake.set_zoom_calls == 0);
@@ -400,7 +401,7 @@ static void test_disable_while_asleep_restores(void)
     go_deep(cfg_default());
     battsave_set_config(&off, now);
     CHECK(battsave_state() == BS_WAKING);
-    run_for(20);
+    run_for(BS_LENS_SETTLE_MS_EXPECTED + 20);
     CHECK(battsave_state() == BS_AWAKE);
     CHECK(fake.display_on == 1);
     CHECK(fake.led_on == 1);
@@ -437,8 +438,125 @@ static void test_config_from_menu(void)
     CHECK(c.t3_ms == 7200000);
 }
 
+// ---------------------------------------------------------------- review fixes
+
+static void test_zoom_restore_waits_for_lens(void)
+{
+    go_deep(cfg_default());
+    battsave_key(1, now);
+    run_for(20);                    // rec mode already back (fake follows)
+    CHECK(battsave_state() == BS_WAKING);
+    CHECK(fake.display_on == 1);    // screen comes back as soon as rec mode does
+    CHECK(fake.set_zoom_calls == 0);
+    run_for(BS_LENS_SETTLE_MS_EXPECTED - 60);
+    CHECK(fake.set_zoom_calls == 0);
+    run_for(60);
+    CHECK(battsave_state() == BS_AWAKE);
+    CHECK(fake.set_zoom_last == 42);
+}
+
+static void test_prevent_shutdown_owned_in_rec(void)
+{
+    setup(cfg_default(), 0);
+    run_for(20);
+    CHECK(fake.prevent_shutdown == 1);
+    run_for(200000);                // LIGHT then DEEP: still owned
+    CHECK(battsave_state() == BS_DEEP);
+    CHECK(fake.prevent_shutdown == 1);
+}
+
+static void test_canon_autooff_in_user_playback(void)
+{
+    setup(cfg_default(), 0);
+    fake.rec_mode = 0;
+    run_for(20);
+    CHECK(fake.prevent_shutdown == 0);
+    fake.rec_mode = 1;
+    run_for(20);
+    CHECK(fake.prevent_shutdown == 1);
+}
+
+static void test_canon_autooff_when_no_deep(void)
+{
+    battsave_config_t c = cfg_default();
+    c.t2_ms = BS_NEVER;
+    setup(c, 0);
+    run_for(HOUR_MS);
+    CHECK(battsave_state() == BS_LIGHT);
+    CHECK(fake.prevent_shutdown == 0);
+
+    c = cfg_default();
+    c.deep_allowed = 0;
+    setup(c, 0);
+    run_for(20);
+    CHECK(fake.prevent_shutdown == 0);
+}
+
+static void test_canon_autooff_after_wake_failed(void)
+{
+    go_deep(cfg_default());
+    fake.rec_mode_follows = 0;
+    battsave_key(1, now);
+    run_for(5000);
+    CHECK(battsave_state() == BS_WAKE_FAILED);
+    CHECK(fake.prevent_shutdown == 0);
+}
+
+static void test_disable_releases_shutdown(void)
+{
+    battsave_config_t off = cfg_default();
+    off.enabled = 0;
+    setup(cfg_default(), 0);
+    run_for(20);
+    CHECK(fake.prevent_shutdown == 1);
+    battsave_set_config(&off, now);
+    CHECK(fake.prevent_shutdown == 0);
+
+    setup(off, 0);
+    CHECK(fake.prevent_shutdown == 0);
+}
+
+static void test_enable_later_resets_idle(void)
+{
+    battsave_config_t off = cfg_default();
+    off.enabled = 0;
+    battsave_config_t on = cfg_default();
+    setup(off, 0);
+    run_for(10 * MIN_MS);
+    battsave_set_config(&on, now);
+    run_for(20);
+    CHECK(battsave_state() == BS_AWAKE);
+    CHECK(fake.set_rec_calls == 0);
+    unsigned enabled_at = now - 20;
+    tick_at(29980, enabled_at);
+    CHECK(battsave_state() == BS_AWAKE);
+    tick_at(30000, enabled_at);
+    CHECK(battsave_state() == BS_LIGHT);
+}
+
+static void test_key_stamp_ahead_of_tick(void)
+{
+    // keyboard task stamps activity with a newer tick than the spytask's
+    setup(cfg_default(), 0);
+    run_for(5000);
+    battsave_key(1, 5010);
+    battsave_tick(5000);
+    CHECK(battsave_state() == BS_AWAKE);
+    CHECK(fake.set_rec_calls == 0);
+    CHECK(fake.display_on == 1);
+}
+
 int main(void)
 {
+    test_zoom_restore_waits_for_lens();
+    test_prevent_shutdown_owned_in_rec();
+    test_canon_autooff_in_user_playback();
+    test_canon_autooff_when_no_deep();
+    test_canon_autooff_after_wake_failed();
+    test_disable_releases_shutdown();
+    test_enable_later_resets_idle();
+    test_key_stamp_ahead_of_tick();
+
     test_power_off_after_t3();
     test_t3_never();
     test_low_battery_powers_off();

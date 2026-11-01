@@ -39,6 +39,7 @@ typedef struct {
     void (*power_off)(void);
     int  (*vbatt_mv)(void);
     int  (*inhibit)(void);  // script running || movie recording || USB connected
+    void (*prevent_shutdown)(int on); // 1: block Canon auto power down (Battery Saver owns power-off)
 } battsave_hw_t;
 
 void             battsave_init(const battsave_hw_t *hw, const battsave_config_t *cfg, unsigned now_ms);
@@ -60,5 +61,6 @@ void battsave_config_from_menu(battsave_config_t *out, int enabled, int t1_idx, 
 // Camera binding (core/battsave_hw.c, ports with CAM_HAS_BATTSAVE only)
 void battsave_hw_init(void);        // call once before the spytask loop
 void battsave_hw_apply_conf(void);  // call after Battery Saver settings change
+int  battsave_hw_prevent_shutdown(void); // 1 while Battery Saver owns power-off (blocks Canon auto power down)
 
 #endif

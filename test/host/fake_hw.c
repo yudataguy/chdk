@@ -12,10 +12,11 @@ static void f_set_zoom(int z)       { fake.set_zoom_calls++; fake.set_zoom_last 
 static void f_power_off(void)       { fake.powered_off = 1; }
 static int  f_vbatt_mv(void)        { return fake.vbatt; }
 static int  f_inhibit(void)         { return fake.inhibit; }
+static void f_prevent_shutdown(int on) { fake.prevent_shutdown = on; }
 
 const battsave_hw_t fake_hw_ops = {
     f_display, f_led, f_is_rec_mode, f_set_rec_mode,
-    f_get_zoom, f_set_zoom, f_power_off, f_vbatt_mv, f_inhibit
+    f_get_zoom, f_set_zoom, f_power_off, f_vbatt_mv, f_inhibit, f_prevent_shutdown
 };
 
 void fake_reset(void)
@@ -27,4 +28,5 @@ void fake_reset(void)
     fake.vbatt = 4000;
     fake.rec_mode_follows = 1;
     fake.set_zoom_last = -1;
+    fake.prevent_shutdown = -1;
 }

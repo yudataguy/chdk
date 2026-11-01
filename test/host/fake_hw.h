@@ -17,6 +17,7 @@ typedef struct {
     int set_zoom_last;
     int get_zoom_calls;
     int rec_mode_follows;   // 1: set_rec_mode takes effect immediately
+    int prevent_shutdown;   // last value passed to prevent_shutdown, -1 = never called
 } fake_hw_t;
 
 extern fake_hw_t fake;

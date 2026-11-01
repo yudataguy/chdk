@@ -9,11 +9,24 @@ static unsigned             last_activity_ms;   // last time a key was down (or 
 static unsigned             state_since_ms;
 static int                  swallow;            // hide keys from Canon until all keys are released
 static int                  saved_zoom;
+static int                  rec_back;           // WAKING: rec mode has returned
+static unsigned             rec_back_ms;
+static int                  owns_shutdown = -1; // last value sent to hw->prevent_shutdown
 
 #define BS_BLINK_PERIOD_MS      3000u
 #define BS_BLINK_ON_MS          50u
 #define BS_WAKE_TIMEOUT_MS      5000u
 #define BS_FAIL_BLINK_MS        250u
+#define BS_LENS_SETTLE_MS       1000u   // after rec mode returns, let the lens finish extending before zooming
+
+// idle time since the last activity. The keyboard task may stamp activity
+// with a slightly newer tick than the spytask's "now"; treat that as 0
+// instead of a huge unsigned difference.
+static unsigned idle_ms(unsigned now_ms)
+{
+    unsigned d = now_ms - last_activity_ms;
+    return ((int)d < 0) ? 0u : d;
+}
 
 static void set_state(battsave_state_t s, unsigned now_ms)
 {
@@ -58,6 +71,7 @@ static void enter_deep(unsigned now_ms)
 
 static void start_wake(unsigned now_ms)
 {
+    rec_back = 0;
     hw->set_rec_mode(1);
     set_state(BS_WAKING, now_ms);
 }
@@ -74,12 +88,30 @@ static void finish_wake(unsigned now_ms)
     set_state(BS_AWAKE, now_ms);
 }
 
+// Canon auto power down is blocked only while Battery Saver itself has a
+// path to power the camera off (deep sleep -> T3 / low battery). Otherwise
+// Canon's own timer stays in charge, e.g. while the user reviews photos in
+// playback, when deep sleep is "Never", or after a failed wake.
+static void update_shutdown_owner(void)
+{
+    int want = cfg.enabled && deep_enabled()
+        && state != BS_WAKE_FAILED && state != BS_POWER_OFF
+        && !(state == BS_AWAKE && !hw->is_rec_mode());
+    if (want != owns_shutdown) {
+        owns_shutdown = want;
+        hw->prevent_shutdown(want);
+    }
+}
+
 void battsave_init(const battsave_hw_t *h, const battsave_config_t *c, unsigned now_ms)
 {
     hw = h;
     cfg = *c;
     last_activity_ms = now_ms;
+    swallow = 0;
+    owns_shutdown = -1;
     set_state(BS_AWAKE, now_ms);
+    update_shutdown_owner();
 }
 
 static void power_off(unsigned now_ms)
@@ -90,9 +122,16 @@ static void power_off(unsigned now_ms)
 
 void battsave_set_config(const battsave_config_t *c, unsigned now_ms)
 {
+    int was_enabled = cfg.enabled;
     cfg = *c;
-    if (cfg.enabled || !hw)
+    if (!hw)
         return;
+    if (cfg.enabled) {
+        if (!was_enabled)
+            last_activity_ms = now_ms;  // idle time counts from when it was switched on
+        update_shutdown_owner();
+        return;
+    }
     // turned off while asleep: bring the camera back now
     switch (state) {
     case BS_LIGHT:
@@ -109,6 +148,7 @@ void battsave_set_config(const battsave_config_t *c, unsigned now_ms)
     default:
         break;
     }
+    update_shutdown_owner();
 }
 
 // sleep must not start (or continue) while the camera is busy, or while the
@@ -123,22 +163,24 @@ void battsave_tick(unsigned now_ms)
     if (!hw)
         return;
     // when disabled, only finish a wake that is already in progress
-    if (!cfg.enabled && state != BS_WAKING)
+    if (!cfg.enabled && state != BS_WAKING) {
+        update_shutdown_owner();
         return;
+    }
 
     switch (state) {
     case BS_AWAKE:
         if (awake_inhibited())
             last_activity_ms = now_ms;
-        else if (deep_enabled() && now_ms - last_activity_ms >= deep_at_ms())
+        else if (deep_enabled() && idle_ms(now_ms) >= deep_at_ms())
             enter_deep(now_ms);
-        else if (now_ms - last_activity_ms >= cfg.t1_ms)
+        else if (idle_ms(now_ms) >= cfg.t1_ms)
             enter_light(now_ms);
         break;
     case BS_LIGHT:
         if (awake_inhibited())
             wake_light(now_ms);
-        else if (deep_enabled() && now_ms - last_activity_ms >= deep_at_ms())
+        else if (deep_enabled() && idle_ms(now_ms) >= deep_at_ms())
             enter_deep(now_ms);
         break;
     case BS_DEEP:
@@ -155,9 +197,15 @@ void battsave_tick(unsigned now_ms)
             hw->led((now_ms - state_since_ms) % BS_BLINK_PERIOD_MS < BS_BLINK_ON_MS);
         break;
     case BS_WAKING:
-        if (hw->is_rec_mode())
-            finish_wake(now_ms);
-        else if (now_ms - state_since_ms >= BS_WAKE_TIMEOUT_MS) {
+        if (rec_back) {
+            if (now_ms - rec_back_ms >= BS_LENS_SETTLE_MS)
+                finish_wake(now_ms);
+        } else if (hw->is_rec_mode()) {
+            rec_back = 1;
+            rec_back_ms = now_ms;
+            hw->display(1);             // screen back as soon as rec mode is
+            hw->led(1);
+        } else if (now_ms - state_since_ms >= BS_WAKE_TIMEOUT_MS) {
             hw->display(1);
             hw->led(1);             // fast blink starts "on"
             set_state(BS_WAKE_FAILED, now_ms);
@@ -169,6 +217,7 @@ void battsave_tick(unsigned now_ms)
     default:
         break;
     }
+    update_shutdown_owner();
 }
 
 int battsave_key(int any_key_down, unsigned now_ms)
@@ -196,6 +245,7 @@ int battsave_key(int any_key_down, unsigned now_ms)
     default:
         break;
     }
+    update_shutdown_owner();
     return swallow;
 }
 

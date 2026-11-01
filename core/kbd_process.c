@@ -9,6 +9,9 @@
 #include "usb_remote.h"
 #include "clock.h"
 #include "debug_led.h"
+#ifdef CAM_HAS_BATTSAVE
+#include "battsave.h"
+#endif
 
 //-------------------------------------------------------------------
 // Keyboard auto repeat
@@ -81,6 +84,12 @@ void exit_alt()
 long kbd_process()
 {
     static int key_pressed;
+
+#ifdef CAM_HAS_BATTSAVE
+    // any key is activity; a key that wakes deep sleep is hidden from Canon
+    if (battsave_key(kbd_get_pressed_key() != 0, get_tick_count()))
+        return 1;
+#endif
 
     if( usb_HPtimer_handle==0) usb_remote_key();
 

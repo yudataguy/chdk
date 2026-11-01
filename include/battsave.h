@@ -57,4 +57,8 @@ int              battsave_enabled(void);
 #define BS_T3_DEFAULT_IDX 2
 void battsave_config_from_menu(battsave_config_t *out, int enabled, int t1_idx, int t2_idx, int t3_idx, int blink);
 
+// Camera binding (core/battsave_hw.c, ports with CAM_HAS_BATTSAVE only)
+void battsave_hw_init(void);        // call once before the spytask loop
+void battsave_hw_apply_conf(void);  // call after Battery Saver settings change
+
 #endif

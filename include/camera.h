@@ -264,6 +264,11 @@
                                                 // Defines 'led' Index value for camera_set_led function to control the AutoFocus assist LED
                                                 // Used for the Motion Detect & Live View buffer testing
 
+    #undef  CAM_HAS_BATTSAVE                    // Battery Saver (tiered idle power saving) enabled for this port
+    #undef  CAM_BATTSAVE_LED                    // camera_set_led index of a low power status LED for the sleep blink
+                                                // (leave undefined if none: the blink is disabled, never use the AF lamp)
+    #undef  CAM_BATTSAVE_NO_DEEP                // port cannot reliably switch play/rec: disable Battery Saver deep sleep
+
     #undef CAM_FILE_COUNTER_IS_VAR              // file counter is variable file_counter_var in stubs, not a param
     
     #define CAM_GUI_FSELECT_SIZE  20, 6, 14     // filename, filesize, filedate camera file select window column widths

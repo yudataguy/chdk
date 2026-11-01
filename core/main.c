@@ -18,6 +18,9 @@
 #endif
 
 #include "kbd_common.h"
+#ifdef CAM_HAS_BATTSAVE
+#include "battsave.h"
+#endif
 
 //==========================================================
 
@@ -229,10 +232,18 @@ void core_spytask()
         module_run("fwcrc.flt");
     }
 
+#ifdef CAM_HAS_BATTSAVE
+    battsave_hw_init();
+#endif
+
     while (1)
     {
         // Set up camera mode & state variables
         mode_get();
+
+#ifdef CAM_HAS_BATTSAVE
+        battsave_tick(get_tick_count());
+#endif
 
 #ifdef CAM_CLEAN_OVERLAY
         extern void handle_clean_overlay();
@@ -312,7 +323,14 @@ void core_spytask()
             continue;
         }
 
-        if ((camera_info.state.state_shooting_progress != SHOOTING_PROGRESS_PROCESSING) || recreview_hold)
+#ifdef CAM_HAS_BATTSAVE
+        // screen is off while Battery Saver sleeps: skip overlay drawing and analysis
+        int battsave_paused = battsave_overlays_paused();
+#else
+        const int battsave_paused = 0;
+#endif
+
+        if (!battsave_paused && ((camera_info.state.state_shooting_progress != SHOOTING_PROGRESS_PROCESSING) || recreview_hold))
         {
             if (((cnt++) & 3) == 0) {
                 gui_redraw();
@@ -332,7 +350,7 @@ void core_spytask()
             }
         }
 
-        if (camera_info.state.state_shooting_progress != SHOOTING_PROGRESS_PROCESSING)
+        if (!battsave_paused && camera_info.state.state_shooting_progress != SHOOTING_PROGRESS_PROCESSING)
         {
             if (conf.show_histo)
                 libhisto->histogram_process();

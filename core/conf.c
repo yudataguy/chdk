@@ -12,6 +12,9 @@
 #include "fileutil.h"
 #include "lang.h"
 #include "usb_remote.h"
+#ifdef CAM_HAS_BATTSAVE
+#include "battsave.h"
+#endif
 
 #include "modules.h"
 #include "module_def.h"
@@ -55,7 +58,11 @@ doesn't really belong in conf but not clear where else it should go
 void conf_update_prevent_shutdown(void) {
     if(conf.alt_prevent_shutdown == ALT_PREVENT_SHUTDOWN_ALWAYS 
         || (conf.alt_prevent_shutdown == ALT_PREVENT_SHUTDOWN_ALT && !camera_info.state.gui_mode_none)
-        || (conf.alt_prevent_shutdown == ALT_PREVENT_SHUTDOWN_ALT_SCRIPT && camera_info.state.state_kbd_script_run)) {
+        || (conf.alt_prevent_shutdown == ALT_PREVENT_SHUTDOWN_ALT_SCRIPT && camera_info.state.state_kbd_script_run)
+#ifdef CAM_HAS_BATTSAVE
+        || battsave_enabled()   // Battery Saver's own power-off timer replaces Canon auto power down
+#endif
+        ) {
         disable_shutdown();
     } else {
         enable_shutdown();

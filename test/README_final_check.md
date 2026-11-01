@@ -17,6 +17,7 @@ CHDK `<ALT>` → menu → **CHDK Settings → Battery Saver**:
 - Screen off after: **10s**
 - Deep sleep after: **1m**
 - Power off after: 30m
+- Log to card: **on** (writes `A/BATTSAVE.LOG`)
 
 Leave `<ALT>` mode (settings apply when you leave). Then:
 
@@ -29,6 +30,8 @@ Leave `<ALT>` mode (settings apply when you leave). Then:
 | 5 | Half-press the shutter | Lens comes out, zoom returns to where it was, screen on; no photo taken |
 | 6 | While in deep sleep, press and **hold** half-press | Wakes up, and nothing reacts to the held press until you let go |
 | 7 | Plug in the USB cable, wait 1 min | Never sleeps while USB is connected |
+| 8 | Unplug USB. Wait 10 s (screen off), then turn the rear dial one click | Screen back on |
+| 9 | Wait 1 min (deep sleep), then turn the rear dial | Lens comes out and the camera wakes |
 
 If step 4 or 5 misbehaves (for example the lens doesn't move, the camera freezes, or the LED blinks fast and the screen stays in playback), write down exactly what happened. That's the one part we couldn't test without the camera.
 
@@ -42,6 +45,12 @@ If step 4 or 5 misbehaves (for example the lens doesn't move, the camera freezes
    - If it has died, roughly when? (Any photo timestamp or log helps.)
    - The battery level shown after waking.
 
+5. Copy `A/BATTSAVE.LOG` from the card and run:
+   ```
+   python3 test/analyze_battsave_log.py BATTSAVE.LOG --low-mv 3300
+   ```
+   (use your CHDK battery "min voltage" setting for `--low-mv`). It shows how long the camera spent in each state, the drain in each, and why it powered off.
+
 For comparison, do the same with Battery Saver **off** and CHDK "Disable LCD off" set to Always (stock idle with the screen on). Stop that run once the battery warning appears, and note how long it took.
 
-Send me both results, together with the output from `test/analyze_probe.py` if you ran the probe.
+Send me both results and `BATTSAVE.LOG`, together with the output from `test/analyze_probe.py` if you ran the probe.

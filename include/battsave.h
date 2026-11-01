@@ -40,6 +40,8 @@ typedef struct {
     int  (*vbatt_mv)(void);
     int  (*inhibit)(void);  // script running || movie recording || USB connected
     void (*prevent_shutdown)(int on); // 1: block Canon auto power down (Battery Saver owns power-off)
+    int  (*activity_poll)(void);  // 1 if a dial or the mode dial moved since the last call
+    void (*log_event)(battsave_state_t s, unsigned now_ms); // state change, and every 10 min asleep
 } battsave_hw_t;
 
 void             battsave_init(const battsave_hw_t *hw, const battsave_config_t *cfg, unsigned now_ms);

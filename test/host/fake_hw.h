@@ -18,6 +18,10 @@ typedef struct {
     int get_zoom_calls;
     int rec_mode_follows;   // 1: set_rec_mode takes effect immediately
     int prevent_shutdown;   // last value passed to prevent_shutdown, -1 = never called
+    int activity;           // next activity_poll() result (dial / mode dial moved); cleared when read
+    int log_count;          // log_event calls
+    int log_state[64];      // states logged (first 64)
+    unsigned log_ms[64];
 } fake_hw_t;
 
 extern fake_hw_t fake;

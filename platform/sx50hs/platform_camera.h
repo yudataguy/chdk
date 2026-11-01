@@ -152,6 +152,7 @@
 
     #define CAM_HAS_BATTSAVE                    1       // Battery Saver
     #define CAM_BATTSAVE_LED                    0       // green power LED (led_table[0] in lib.c)
+    #define CAM_BATTSAVE_DIAL_POS               rear_dial_position  // short, stubs_min.S (both 1.00b and 1.00c)
 
     #define CAM_HAS_FILEWRITETASK_HOOK          1
     #define CAM_FILEWRITETASK_SEEKS             1

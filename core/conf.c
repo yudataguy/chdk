@@ -560,6 +560,7 @@ static ConfInfo conf_info[] = {
     CONF_INFO(272, conf.battsave_t2,                            CONF_DEF_VALUE, i:BS_T2_DEFAULT_IDX),
     CONF_INFO(273, conf.battsave_t3,                            CONF_DEF_VALUE, i:BS_T3_DEFAULT_IDX),
     CONF_INFO(274, conf.battsave_blink,                         CONF_DEF_VALUE, i:1),
+    CONF_INFO(275, conf.battsave_log,                           CONF_DEF_VALUE, i:0),
 #endif
 
     CONF_INFO(999, conf.script_allow_lua_native_calls,          CONF_DEF_VALUE, i:0),
@@ -614,6 +615,7 @@ void conf_info_func(unsigned short id)
     case 272:
     case 273:
     case 274:
+    case 275:
         battsave_hw_apply_conf();
         break;
 #endif

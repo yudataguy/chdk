@@ -822,8 +822,9 @@
 #define LANG_MENU_BATTSAVE_T2                   691
 #define LANG_MENU_BATTSAVE_T3                   692
 #define LANG_MENU_BATTSAVE_BLINK                693
+#define LANG_MENU_BATTSAVE_LOG                  694
 
-#define GUI_LANG_ITEMS                          693
+#define GUI_LANG_ITEMS                          694
 
 //-------------------------------------------------------------------
 extern void gui_lang_init();

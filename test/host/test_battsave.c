@@ -345,22 +345,13 @@ static void test_t3_never(void)
     CHECK(battsave_state() == BS_DEEP);
 }
 
-static void test_low_battery_powers_off(void)
+static void test_low_battery_check_off(void)
 {
     battsave_config_t c = cfg_default();
-    c.low_batt_mv = 3300;
-    go_deep(c);
-    run_for(1000);
-    CHECK(fake.powered_off == 0);
-    fake.vbatt = 3299;
-    run_for(20);
-    CHECK(fake.powered_off == 1);
-    CHECK(battsave_state() == BS_POWER_OFF);
-
     c.low_batt_mv = 0;
     go_deep(c);
     fake.vbatt = 3000;
-    run_for(10000);
+    run_for(10 * MIN_MS);
     CHECK(fake.powered_off == 0);
 }
 
@@ -546,8 +537,188 @@ static void test_key_stamp_ahead_of_tick(void)
     CHECK(fake.display_on == 1);
 }
 
+// ------------------------------------------------------- dial / mode dial
+
+static void test_dial_keeps_awake(void)
+{
+    setup(cfg_default(), 0);
+    run_for(20000);
+    fake.activity = 1;
+    run_for(29980);                 // 49980 total, 29980 since the dial moved
+    CHECK(battsave_state() == BS_AWAKE);
+    run_for(40);
+    CHECK(battsave_state() == BS_LIGHT);
+}
+
+static void test_dial_wakes_light(void)
+{
+    setup(cfg_default(), 0);
+    run_for(30000);
+    CHECK(battsave_state() == BS_LIGHT);
+    fake.activity = 1;
+    run_for(20);
+    CHECK(battsave_state() == BS_AWAKE);
+    CHECK(fake.display_on == 1);
+}
+
+static void test_dial_wakes_deep(void)
+{
+    go_deep(cfg_default());
+    CHECK(battsave_state() == BS_DEEP);
+    fake.activity = 1;
+    run_for(20);
+    CHECK(battsave_state() == BS_WAKING);
+    CHECK(fake.set_rec_calls == 2);
+    CHECK(battsave_key(0, now) == 0);   // nothing to swallow: no key was pressed
+    run_for(BS_LENS_SETTLE_MS_EXPECTED + 40);
+    CHECK(battsave_state() == BS_AWAKE);
+}
+
+static void test_dial_wakes_failed(void)
+{
+    go_deep(cfg_default());
+    fake.rec_mode_follows = 0;
+    fake.activity = 1;
+    run_for(6000);
+    CHECK(battsave_state() == BS_WAKE_FAILED);
+    fake.activity = 1;
+    run_for(20);
+    CHECK(battsave_state() == BS_AWAKE);
+    CHECK(fake.led_on == 1);
+}
+
+static void test_dial_ignored_when_disabled(void)
+{
+    battsave_config_t c = cfg_default();
+    c.enabled = 0;
+    setup(c, 0);
+    fake.activity = 1;
+    run_for(20);
+    CHECK(battsave_state() == BS_AWAKE);
+}
+
+// ------------------------------------------------------- low battery smoothing
+
+#define VBATT_CHECK_MS_EXPECTED 10000u
+#define VBATT_LOW_COUNT_EXPECTED 3
+
+static void test_low_battery_three_checks(void)
+{
+    battsave_config_t c = cfg_default();
+    c.low_batt_mv = 3300;
+    unsigned deep_at = go_deep(c);
+    fake.vbatt = 3299;
+    run_for(VBATT_CHECK_MS_EXPECTED * VBATT_LOW_COUNT_EXPECTED - 20);
+    CHECK(fake.powered_off == 0);
+    tick_at(VBATT_CHECK_MS_EXPECTED * VBATT_LOW_COUNT_EXPECTED, deep_at);
+    CHECK(fake.powered_off == 1);
+    CHECK(battsave_state() == BS_POWER_OFF);
+}
+
+static void test_low_battery_single_dip_ignored(void)
+{
+    battsave_config_t c = cfg_default();
+    c.low_batt_mv = 3300;
+    unsigned deep_at = go_deep(c);
+    run_for(VBATT_CHECK_MS_EXPECTED - 100);
+    fake.vbatt = 3000;              // one low reading at the next check...
+    run_for(200);
+    fake.vbatt = 4000;              // ...then back to normal
+    now = deep_at;
+    run_for(10 * MIN_MS);
+    CHECK(fake.powered_off == 0);
+    CHECK(battsave_state() == BS_DEEP);
+}
+
+static void test_low_battery_recovery_resets_count(void)
+{
+    battsave_config_t c = cfg_default();
+    c.low_batt_mv = 3300;
+    unsigned deep_at = go_deep(c);
+    fake.vbatt = 3000;
+    run_for(2 * VBATT_CHECK_MS_EXPECTED);           // two lows
+    fake.vbatt = 4000;
+    run_for(VBATT_CHECK_MS_EXPECTED);               // one normal: count resets
+    fake.vbatt = 3000;
+    run_for(2 * VBATT_CHECK_MS_EXPECTED);           // two lows again
+    CHECK(fake.powered_off == 0);
+    run_for(VBATT_CHECK_MS_EXPECTED);               // third consecutive low
+    CHECK(fake.powered_off == 1);
+    (void)deep_at;
+}
+
+// ------------------------------------------------------- card log
+
+#define LOG_PERIOD_MS_EXPECTED (10u * MIN_MS)
+
+static void test_log_on_state_change(void)
+{
+    setup(cfg_default(), 1000);
+    CHECK(fake.log_count == 1);
+    CHECK(fake.log_state[0] == BS_AWAKE);
+    CHECK(fake.log_ms[0] == 1000);
+    run_for(30000);
+    CHECK(fake.log_count == 2);
+    CHECK(fake.log_state[1] == BS_LIGHT);
+    CHECK(fake.log_ms[1] == 31000);
+    battsave_key(1, now);
+    CHECK(fake.log_count == 3);
+    CHECK(fake.log_state[2] == BS_AWAKE);
+    battsave_key(0, now);
+    run_for(60000);                 // no state changes beyond LIGHT again
+    CHECK(fake.log_count == 4);
+}
+
+static void test_log_periodic_while_asleep(void)
+{
+    battsave_config_t c = cfg_default();
+    c.t3_ms = BS_NEVER;
+    unsigned deep_at = go_deep(c);
+    int base = fake.log_count;
+    CHECK(fake.log_state[base - 1] == BS_DEEP);
+    run_for(LOG_PERIOD_MS_EXPECTED - 20);
+    CHECK(fake.log_count == base);
+    run_for(20);
+    CHECK(fake.log_count == base + 1);
+    CHECK(fake.log_state[base] == BS_DEEP);
+    CHECK(fake.log_ms[base] == deep_at + LOG_PERIOD_MS_EXPECTED);
+    run_for(LOG_PERIOD_MS_EXPECTED);
+    CHECK(fake.log_count == base + 2);
+}
+
+static void test_log_not_periodic_when_awake(void)
+{
+    setup(cfg_default(), 0);
+    fake.inhibit = 1;
+    run_for(3 * LOG_PERIOD_MS_EXPECTED);
+    CHECK(fake.log_count == 1);
+}
+
+static void test_log_before_power_off(void)
+{
+    battsave_config_t c = cfg_default();
+    c.t3_ms = 30u * MIN_MS;
+    go_deep(c);
+    run_for(30u * MIN_MS);
+    CHECK(fake.powered_off == 1);
+    CHECK(fake.log_state[fake.log_count - 1] == BS_POWER_OFF);
+}
+
 int main(void)
 {
+    test_dial_keeps_awake();
+    test_dial_wakes_light();
+    test_dial_wakes_deep();
+    test_dial_wakes_failed();
+    test_dial_ignored_when_disabled();
+    test_low_battery_three_checks();
+    test_low_battery_single_dip_ignored();
+    test_low_battery_recovery_resets_count();
+    test_log_on_state_change();
+    test_log_periodic_while_asleep();
+    test_log_not_periodic_when_awake();
+    test_log_before_power_off();
+
     test_zoom_restore_waits_for_lens();
     test_prevent_shutdown_owned_in_rec();
     test_canon_autooff_in_user_playback();
@@ -559,7 +730,7 @@ int main(void)
 
     test_power_off_after_t3();
     test_t3_never();
-    test_low_battery_powers_off();
+    test_low_battery_check_off();
     test_low_battery_ignored_when_awake();
     test_inhibit_in_deep_wakes();
     test_disable_while_asleep_restores();

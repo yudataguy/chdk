@@ -13,10 +13,17 @@ static void f_power_off(void)       { fake.powered_off = 1; }
 static int  f_vbatt_mv(void)        { return fake.vbatt; }
 static int  f_inhibit(void)         { return fake.inhibit; }
 static void f_prevent_shutdown(int on) { fake.prevent_shutdown = on; }
+static int  f_activity_poll(void)   { int a = fake.activity; fake.activity = 0; return a; }
+static void f_log_event(battsave_state_t s, unsigned ms)
+{
+    if (fake.log_count < 64) { fake.log_state[fake.log_count] = s; fake.log_ms[fake.log_count] = ms; }
+    fake.log_count++;
+}
 
 const battsave_hw_t fake_hw_ops = {
     f_display, f_led, f_is_rec_mode, f_set_rec_mode,
-    f_get_zoom, f_set_zoom, f_power_off, f_vbatt_mv, f_inhibit, f_prevent_shutdown
+    f_get_zoom, f_set_zoom, f_power_off, f_vbatt_mv, f_inhibit, f_prevent_shutdown,
+    f_activity_poll, f_log_event
 };
 
 void fake_reset(void)

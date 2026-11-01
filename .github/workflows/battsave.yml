@@ -17,7 +17,7 @@ jobs:
       - name: Probe analyzer tests
         run: |
           pip install pytest
-          python3 -m pytest test/test_analyze_probe.py -q
+          python3 -m pytest test/test_analyze_probe.py test/test_analyze_battsave_log.py -q
 
   build-sx50:
     runs-on: ubuntu-latest

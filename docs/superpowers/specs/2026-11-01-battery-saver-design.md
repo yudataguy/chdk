@@ -37,7 +37,8 @@ Non-goals: changing Canon firmware power behavior beyond what existing CHDK APIs
 - **LIGHT wake:** keys pass through to Canon firmware. Full shutter press shoots immediately.
 - **DEEP wake:** the waking key press is swallowed. Switch to rec mode, restore saved zoom, display on.
 - **Never enter sleep while:** a script is running, video is recording, a USB/PTP session is active, or the user is already in playback mode by their own choice.
-- **Canon Auto Power Down** is blocked while Battery Saver is enabled (reusing the `alt_prevent_shutdown` mechanism, `core/conf.c:56`). T3 replaces it.
+- **Canon Auto Power Down** is blocked only while Battery Saver itself has a power-off path (deep sleep enabled, not in user playback, not after a failed wake), reusing `conf_update_prevent_shutdown()`. T3 replaces it.
+- **Dial activity:** turning a dial, or changing the mode dial while shooting, counts as activity like a key press (resets idle, wakes LIGHT/DEEP) but is never hidden from Canon.
 - In LIGHT and DEEP, `core/main.c` skips `gui_redraw()`, histogram processing, and edge overlay.
 
 ## 3. Architecture
@@ -63,7 +64,7 @@ Non-goals: changing Canon firmware power behavior beyond what existing CHDK APIs
 
 ## 4. Settings
 
-New submenu "Battery Saver" under Miscellaneous, near "Disable LCD off". Persisted as conf IDs 299–303.
+New submenu "Battery Saver" under CHDK Settings, next to "Disable LCD off". Persisted as conf IDs 270–275 (`CONF_VERSION` {3,8}).
 
 | Setting | Values | Default |
 |---|---|---|
@@ -72,13 +73,14 @@ New submenu "Battery Saver" under Miscellaneous, near "Disable LCD off". Persist
 | Deep sleep after (T2) | 1, 3, 5, 10 min, never | 3 min |
 | Power off after (T3) | 30 min, 1 h, 2 h, 4 h, never | 2 h |
 | Sleep blink | on / off | on |
+| Log to card | on / off — appends `tick_ms,state,vbatt_mv` to `A/BATTSAVE.LOG` on each state change and every 10 min asleep | off |
 
 ## 5. Error handling
 
 - **T2 ≤ T1:** treated as T2 = T1 (LIGHT is skipped, go straight to DEEP).
 - **Rec-mode switch fails on wake:** retry for up to 5 s; if still not in rec mode, give up — display on, remain in playback, fast LED blink to signal a problem. Never loop indefinitely.
 - **Zoom restore:** skipped if the zoom changed during wake.
-- **Low battery in sleep:** `get_vbatt() < conf.batt_volts_min` → POWER_OFF.
+- **Low battery in sleep:** checked every 10 s in DEEP; 3 consecutive readings below `conf.batt_volts_min` → POWER_OFF. One normal reading resets the count, so a single sag cannot power off the camera.
 - **CHDK not loaded:** stock camera, nothing changes.
 
 ## 6. Portability
@@ -90,10 +92,11 @@ The feature lives in platform-independent `core/` and uses only existing per-por
 | `CAM_HAS_BATTSAVE` | Feature compiled in for this port | undefined (off) — set only for tested ports; SX50 HS first |
 | `CAM_BATTSAVE_LED` | `camera_set_led` index of a low-power status LED | undefined → sleep blink disabled (never blinks the AF lamp) |
 | `CAM_BATTSAVE_NO_DEEP` | Port can't reliably switch play/rec; disable DEEP | undefined |
+| `CAM_BATTSAVE_DIAL_POS` | Raw dial counter variable from stubs, read to count dial turns as activity | undefined → only the mode dial counts |
 
 Zoom save/restore is skipped on ports without `CAM_HAS_ZOOM_LEVER`. Low-battery threshold is per-port already via `get_vbatt_min()`.
 
-SX50 HS: `CAM_HAS_BATTSAVE 1`, `CAM_BATTSAVE_LED 0` (green power LED, `platform/sx50hs/lib.c:49`).
+SX50 HS: `CAM_HAS_BATTSAVE 1`, `CAM_BATTSAVE_LED 0` (green power LED, `platform/sx50hs/lib.c:49`), `CAM_BATTSAVE_DIAL_POS rear_dial_position`.
 
 ## 7. Testing
 

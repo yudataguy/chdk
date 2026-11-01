@@ -268,6 +268,8 @@
     #undef  CAM_BATTSAVE_LED                    // camera_set_led index of a low power status LED for the sleep blink
                                                 // (leave undefined if none: the blink is disabled, never use the AF lamp)
     #undef  CAM_BATTSAVE_NO_DEEP                // port cannot reliably switch play/rec: disable Battery Saver deep sleep
+    #undef  CAM_BATTSAVE_DIAL_POS               // raw dial counter variable (from stubs) that Battery Saver may read to
+                                                // count dial turns as activity; leave undefined if unknown
 
     #undef CAM_FILE_COUNTER_IS_VAR              // file counter is variable file_counter_var in stubs, not a param
     

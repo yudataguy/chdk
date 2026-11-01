@@ -2164,6 +2164,7 @@ static CMenuItem battsave_submenu_items[] = {
 #ifdef CAM_BATTSAVE_LED
     MENU_ITEM   (0x5c,LANG_MENU_BATTSAVE_BLINK,             MENUITEM_BOOL,      &conf.battsave_blink, 0 ),
 #endif
+    MENU_ITEM   (0x5c,LANG_MENU_BATTSAVE_LOG,               MENUITEM_BOOL,      &conf.battsave_log, 0 ),
     MENU_ITEM   (0x51,LANG_MENU_BACK,                       MENUITEM_UP, 0, 0 ),
     {0}
 };

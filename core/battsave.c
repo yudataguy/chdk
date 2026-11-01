@@ -12,12 +12,18 @@ static int                  saved_zoom;
 static int                  rec_back;           // WAKING: rec mode has returned
 static unsigned             rec_back_ms;
 static int                  owns_shutdown = -1; // last value sent to hw->prevent_shutdown
+static unsigned             vbatt_check_ms;     // DEEP: last battery check
+static int                  vbatt_low_count;    // DEEP: consecutive low readings
+static unsigned             log_ms;             // last log_event
 
 #define BS_BLINK_PERIOD_MS      3000u
 #define BS_BLINK_ON_MS          50u
 #define BS_WAKE_TIMEOUT_MS      5000u
 #define BS_FAIL_BLINK_MS        250u
 #define BS_LENS_SETTLE_MS       1000u   // after rec mode returns, let the lens finish extending before zooming
+#define BS_VBATT_CHECK_MS       10000u  // DEEP: read the battery this often...
+#define BS_VBATT_LOW_COUNT      3       // ...and power off after this many low readings in a row
+#define BS_LOG_PERIOD_MS        600000u // asleep: log a line this often
 
 // idle time since the last activity. The keyboard task may stamp activity
 // with a slightly newer tick than the spytask's "now"; treat that as 0
@@ -28,10 +34,20 @@ static unsigned idle_ms(unsigned now_ms)
     return ((int)d < 0) ? 0u : d;
 }
 
+static void log_event(unsigned now_ms)
+{
+    log_ms = now_ms;
+    if (hw->log_event)
+        hw->log_event(state, now_ms);
+}
+
 static void set_state(battsave_state_t s, unsigned now_ms)
 {
+    int changed = s != state;
     state = s;
     state_since_ms = now_ms;
+    if (changed)
+        log_event(now_ms);
 }
 
 static void enter_light(unsigned now_ms)
@@ -66,6 +82,8 @@ static void enter_deep(unsigned now_ms)
         hw->display(0);
     hw->led(0);
     hw->set_rec_mode(0);    // playback: sensor off, lens retracts
+    vbatt_check_ms = now_ms;
+    vbatt_low_count = 0;
     set_state(BS_DEEP, now_ms);
 }
 
@@ -110,7 +128,9 @@ void battsave_init(const battsave_hw_t *h, const battsave_config_t *c, unsigned 
     last_activity_ms = now_ms;
     swallow = 0;
     owns_shutdown = -1;
-    set_state(BS_AWAKE, now_ms);
+    state = BS_AWAKE;
+    state_since_ms = now_ms;
+    log_event(now_ms);          // session start
     update_shutdown_owner();
 }
 
@@ -158,6 +178,41 @@ static int awake_inhibited(void)
     return hw->inhibit() || !hw->is_rec_mode();
 }
 
+// DEEP: one reading every BS_VBATT_CHECK_MS; a single sag (e.g. while the
+// lens motor runs or the card is written) must not power the camera off
+static int low_battery(unsigned now_ms)
+{
+    if (!cfg.low_batt_mv || now_ms - vbatt_check_ms < BS_VBATT_CHECK_MS)
+        return 0;
+    vbatt_check_ms = now_ms;
+    if (hw->vbatt_mv() < cfg.low_batt_mv)
+        vbatt_low_count++;
+    else
+        vbatt_low_count = 0;
+    return vbatt_low_count >= BS_VBATT_LOW_COUNT;
+}
+
+// a dial or mode dial moved: counts as activity, like a key press, but never
+// hides anything from Canon (the dial event is harmless if Canon sees it)
+static void dial_activity(unsigned now_ms)
+{
+    last_activity_ms = now_ms;
+    switch (state) {
+    case BS_LIGHT:
+        wake_light(now_ms);
+        break;
+    case BS_DEEP:
+        start_wake(now_ms);
+        break;
+    case BS_WAKE_FAILED:
+        hw->led(1);
+        set_state(BS_AWAKE, now_ms);
+        break;
+    default:
+        break;
+    }
+}
+
 void battsave_tick(unsigned now_ms)
 {
     if (!hw)
@@ -167,6 +222,13 @@ void battsave_tick(unsigned now_ms)
         update_shutdown_owner();
         return;
     }
+
+    // poll every tick, so the hardware side keeps its "last position" current
+    if (hw->activity_poll && hw->activity_poll() && cfg.enabled)
+        dial_activity(now_ms);
+
+    if ((state == BS_LIGHT || state == BS_DEEP) && now_ms - log_ms >= BS_LOG_PERIOD_MS)
+        log_event(now_ms);
 
     switch (state) {
     case BS_AWAKE:
@@ -188,8 +250,11 @@ void battsave_tick(unsigned now_ms)
             start_wake(now_ms);
             break;
         }
-        if ((cfg.t3_ms != BS_NEVER && now_ms - state_since_ms >= cfg.t3_ms)
-            || (cfg.low_batt_mv && hw->vbatt_mv() < cfg.low_batt_mv)) {
+        if (cfg.t3_ms != BS_NEVER && now_ms - state_since_ms >= cfg.t3_ms) {
+            power_off(now_ms);
+            break;
+        }
+        if (low_battery(now_ms)) {
             power_off(now_ms);
             break;
         }

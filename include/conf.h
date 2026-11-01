@@ -248,6 +248,13 @@ typedef struct
     long alt_mode_button; //for S-series
     int alt_prevent_shutdown;
 
+    // Battery Saver (menu indices, see include/battsave.h)
+    int battsave_enable;
+    int battsave_t1;
+    int battsave_t2;
+    int battsave_t3;
+    int battsave_blink;
+
     int show_grid_lines;
     char grid_lines_file[CONF_STR_LEN];
     int grid_force_color;

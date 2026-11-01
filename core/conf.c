@@ -554,6 +554,14 @@ static ConfInfo conf_info[] = {
     CONF_INFO(268, conf.raw_ev_histo_ettr_pct,                  CONF_DEF_VALUE, i:1),  // .1% (Decimal * 10)
     CONF_INFO(269, conf.raw_ev_histo_save_for_image,            CONF_DEF_VALUE, i:0),
 
+#ifdef CAM_HAS_BATTSAVE
+    CONF_INFO(270, conf.battsave_enable,                        CONF_DEF_VALUE, i:0),
+    CONF_INFO(271, conf.battsave_t1,                            CONF_DEF_VALUE, i:BS_T1_DEFAULT_IDX),
+    CONF_INFO(272, conf.battsave_t2,                            CONF_DEF_VALUE, i:BS_T2_DEFAULT_IDX),
+    CONF_INFO(273, conf.battsave_t3,                            CONF_DEF_VALUE, i:BS_T3_DEFAULT_IDX),
+    CONF_INFO(274, conf.battsave_blink,                         CONF_DEF_VALUE, i:1),
+#endif
+
     CONF_INFO(999, conf.script_allow_lua_native_calls,          CONF_DEF_VALUE, i:0),
 
     {0}
@@ -600,6 +608,15 @@ void conf_info_func(unsigned short id)
     case 221: 
         conf_update_prevent_shutdown(); 
         break;
+#ifdef CAM_HAS_BATTSAVE
+    case 270:
+    case 271:
+    case 272:
+    case 273:
+    case 274:
+        battsave_hw_apply_conf();
+        break;
+#endif
     case 260:
         librawevhisto->load(conf.raw_ev_histo_enable);
         break;

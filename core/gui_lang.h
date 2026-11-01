@@ -816,7 +816,14 @@
 #define LANG_MENU_RAW_EV_HISTO_ETTR_PCT         686
 #define LANG_MENU_RAW_EV_HISTO_SAVE_FOR_IMG     687
 
-#define GUI_LANG_ITEMS                          687
+#define LANG_MENU_BATTSAVE_TITLE                688
+#define LANG_MENU_BATTSAVE_ENABLE               689
+#define LANG_MENU_BATTSAVE_T1                   690
+#define LANG_MENU_BATTSAVE_T2                   691
+#define LANG_MENU_BATTSAVE_T3                   692
+#define LANG_MENU_BATTSAVE_BLINK                693
+
+#define GUI_LANG_ITEMS                          693
 
 //-------------------------------------------------------------------
 extern void gui_lang_init();

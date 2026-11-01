@@ -45,6 +45,7 @@ static int  hw_vbatt_mv(void)          { return (int)stat_get_vbatt(); }
 static int hw_inhibit(void)
 {
     return camera_info.state.state_kbd_script_run
+        || !camera_info.state.gui_mode_none     // CHDK menu / ALT mode open
         || is_video_recording()
         || get_usb_bit();
 }
@@ -56,8 +57,8 @@ static const battsave_hw_t battsave_hw = {
 
 static void config_from_conf(battsave_config_t *c)
 {
-    // menu settings arrive in Task 7; until then Battery Saver stays off
-    battsave_config_from_menu(c, 0, BS_T1_DEFAULT_IDX, BS_T2_DEFAULT_IDX, BS_T3_DEFAULT_IDX, 1);
+    battsave_config_from_menu(c, conf.battsave_enable, conf.battsave_t1, conf.battsave_t2,
+                              conf.battsave_t3, conf.battsave_blink);
 #ifndef CAM_BATTSAVE_LED
     c->blink = 0;
 #endif

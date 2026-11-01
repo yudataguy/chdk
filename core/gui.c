@@ -6,6 +6,9 @@
 #include "fileutil.h"
 #include "gui.h"
 #include "gui_lang.h"
+#ifdef CAM_HAS_BATTSAVE
+#include "battsave.h"
+#endif
 #include "gui_draw.h"
 #include "gui_menu.h"
 #include "gui_user_menu.h"
@@ -2148,6 +2151,25 @@ static void gui_menuproc_reset(__attribute__ ((unused))int arg)
                   MBOX_FUNC_RESTORE|MBOX_TEXT_CENTER|MBOX_BTN_YES_NO|MBOX_DEF_BTN2, gui_menuproc_reset_selected);
 }
 
+#ifdef CAM_HAS_BATTSAVE
+static const char* gui_battsave_t1_modes[] = { "10s", "30s", "1m", "2m" };
+static const char* gui_battsave_t2_modes[] = { "1m", "3m", "5m", "10m", "Never" };
+static const char* gui_battsave_t3_modes[] = { "30m", "1h", "2h", "4h", "Never" };
+
+static CMenuItem battsave_submenu_items[] = {
+    MENU_ITEM   (0x5c,LANG_MENU_BATTSAVE_ENABLE,            MENUITEM_BOOL,      &conf.battsave_enable, 0 ),
+    MENU_ENUM2  (0x5f,LANG_MENU_BATTSAVE_T1,                &conf.battsave_t1, gui_battsave_t1_modes ),
+    MENU_ENUM2  (0x5f,LANG_MENU_BATTSAVE_T2,                &conf.battsave_t2, gui_battsave_t2_modes ),
+    MENU_ENUM2  (0x5f,LANG_MENU_BATTSAVE_T3,                &conf.battsave_t3, gui_battsave_t3_modes ),
+#ifdef CAM_BATTSAVE_LED
+    MENU_ITEM   (0x5c,LANG_MENU_BATTSAVE_BLINK,             MENUITEM_BOOL,      &conf.battsave_blink, 0 ),
+#endif
+    MENU_ITEM   (0x51,LANG_MENU_BACK,                       MENUITEM_UP, 0, 0 ),
+    {0}
+};
+static CMenu battsave_submenu = {0x32,LANG_MENU_BATTSAVE_TITLE, battsave_submenu_items };
+#endif
+
 static CMenuItem chdk_settings_menu_items[] = {
     MENU_ITEM   (0x22,LANG_MENU_MAIN_OSD_PARAM,             MENUITEM_SUBMENU,   &osd_submenu, 0 ),
     MENU_ITEM   (0x72,LANG_MENU_OSD_LAYOUT_EDITOR,          MENUITEM_PROC,      module_run, "_osd_le.flt" ),
@@ -2177,6 +2199,9 @@ static CMenuItem chdk_settings_menu_items[] = {
     MENU_ITEM   (0x5c,LANG_MENU_MISC_ZOOM_ASSIST,           MENUITEM_BOOL,      &conf.zoom_assist_button_disable, 0 ),
 #endif
     MENU_ENUM2  (0x5d,LANG_MENU_MISC_DISABLE_LCD_OFF,       &conf.alt_prevent_shutdown, gui_alt_power_modes ),
+#ifdef CAM_HAS_BATTSAVE
+    MENU_ITEM   (0x32,LANG_MENU_BATTSAVE_TITLE,             MENUITEM_SUBMENU,   &battsave_submenu, 0 ),
+#endif
     MENU_ITEM   (0x2b,LANG_MENU_MAIN_RESET_OPTIONS,         MENUITEM_PROC,      gui_menuproc_reset, 0 ),
     MENU_ITEM   (0x51,LANG_MENU_BACK,                       MENUITEM_UP, 0, 0 ),
     {0}
@@ -3049,7 +3074,11 @@ void gui_activate_alt_mode()
         vid_turn_on_updates();
         gui_set_mode(&defaultGuiHandler);
 
+#ifdef CAM_HAS_BATTSAVE
+        battsave_hw_apply_conf();   // also updates prevent shutdown
+#else
         conf_update_prevent_shutdown();
+#endif
         break;
     }
 

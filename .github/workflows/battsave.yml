@@ -2,9 +2,9 @@ name: battery-saver
 
 on:
   push:
-    branches: [battery-saver, trunk]
+    branches: [battery-saver, more-battsave, trunk]
   pull_request:
-    branches: [battery-saver, trunk]
+    branches: [battery-saver, more-battsave, trunk]
   workflow_dispatch:
 
 jobs:

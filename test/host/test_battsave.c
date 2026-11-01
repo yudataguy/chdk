@@ -139,8 +139,199 @@ static void test_light_sleep_across_tick_wrap(void)
     CHECK(battsave_state() == BS_LIGHT);
 }
 
+// ---------------------------------------------------------------- DEEP
+
+// default config, idle until DEEP; returns the time DEEP was entered
+static unsigned go_deep(battsave_config_t c)
+{
+    setup(c, 0);
+    fake.zoom = 42;
+    run_for(c.t2_ms > c.t1_ms ? c.t2_ms : c.t1_ms);
+    return now;
+}
+
+static void test_deep_after_t2(void)
+{
+    setup(cfg_default(), 0);
+    fake.zoom = 42;
+    run_for(179980);
+    CHECK(battsave_state() == BS_LIGHT);
+    tick_at(180000, 0);
+    CHECK(battsave_state() == BS_DEEP);
+    CHECK(fake.rec_mode == 0);
+    CHECK(fake.set_rec_calls == 1);
+    CHECK(fake.get_zoom_calls >= 1);
+    CHECK(fake.display_on == 0);
+    CHECK(battsave_overlays_paused() == 1);
+}
+
+static void test_t2_never_stays_light(void)
+{
+    battsave_config_t c = cfg_default();
+    c.t2_ms = BS_NEVER;
+    setup(c, 0);
+    run_for(10 * HOUR_MS);
+    CHECK(battsave_state() == BS_LIGHT);
+    CHECK(fake.set_rec_calls == 0);
+}
+
+static void test_t2_le_t1_goes_straight_deep(void)
+{
+    battsave_config_t c = cfg_default();
+    c.t1_ms = 60000;
+    c.t2_ms = 30000;
+    setup(c, 0);
+    int saw_light = 0;
+    while (now < 59980) {
+        battsave_tick(now);
+        if (battsave_state() == BS_LIGHT) saw_light = 1;
+        now += 20;
+    }
+    battsave_tick(now);
+    CHECK(battsave_state() == BS_AWAKE);
+    tick_at(60000, 0);
+    CHECK(battsave_state() == BS_DEEP);
+    CHECK(fake.display_on == 0);
+    CHECK(saw_light == 0);
+}
+
+static void test_deep_not_allowed(void)
+{
+    battsave_config_t c = cfg_default();
+    c.deep_allowed = 0;
+    setup(c, 0);
+    run_for(10 * HOUR_MS);
+    CHECK(battsave_state() == BS_LIGHT);
+    CHECK(fake.set_rec_calls == 0);
+}
+
+// LED on-time in ms over one 3000 ms window, starting 3000 ms after DEEP entry
+static unsigned led_on_ms_in_window(void)
+{
+    unsigned on = 0;
+    unsigned start = now + 3000;
+    run_for(3000 - 20);     // now = deep + 2980
+    for (now = start; now < start + 3000; now += 20) {
+        battsave_tick(now);
+        if (fake.led_on) on += 20;
+    }
+    return on;
+}
+
+static void test_deep_blink_pattern(void)
+{
+    go_deep(cfg_default());
+    CHECK(battsave_state() == BS_DEEP);
+    unsigned on = led_on_ms_in_window();
+    CHECK(on >= 40 && on <= 60);
+    CHECK(battsave_state() == BS_DEEP);
+
+    battsave_config_t c = cfg_default();
+    c.blink = 0;
+    go_deep(c);
+    CHECK(led_on_ms_in_window() == 0);
+}
+
+static void test_deep_wake_restores(void)
+{
+    go_deep(cfg_default());
+    run_for(1000);
+    CHECK(battsave_key(1, now) == 1);
+    CHECK(battsave_state() == BS_WAKING);
+    CHECK(fake.set_rec_calls == 2);
+    run_for(20);
+    CHECK(battsave_state() == BS_AWAKE);
+    CHECK(fake.display_on == 1);
+    CHECK(fake.led_on == 1);
+    CHECK(fake.set_zoom_last == 42);
+    CHECK(battsave_overlays_paused() == 0);
+}
+
+static void test_deep_wake_swallows_until_release(void)
+{
+    go_deep(cfg_default());
+    run_for(1000);
+    CHECK(battsave_key(1, now) == 1);
+    unsigned end = now + 2000;
+    int all_swallowed = 1;
+    while (now < end) {
+        now += 20;
+        battsave_tick(now);
+        if (battsave_key(1, now) != 1) all_swallowed = 0;
+    }
+    CHECK(all_swallowed);
+    CHECK(battsave_state() == BS_AWAKE);
+    now += 20;
+    battsave_key(0, now);
+    now += 20;
+    CHECK(battsave_key(1, now) == 0);
+}
+
+static void test_zoom_skip_if_moved(void)
+{
+    go_deep(cfg_default());
+    fake.rec_mode_follows = 0;
+    battsave_key(1, now);
+    CHECK(battsave_state() == BS_WAKING);
+    run_for(500);
+    fake.zoom = 10;         // user zoomed while the lens was extending
+    fake.rec_mode = 1;
+    run_for(20);
+    CHECK(battsave_state() == BS_AWAKE);
+    CHECK(fake.set_zoom_calls == 0);
+}
+
+static void test_zoom_disallowed(void)
+{
+    battsave_config_t c = cfg_default();
+    c.zoom_allowed = 0;
+    go_deep(c);
+    battsave_key(1, now);
+    run_for(100);
+    CHECK(battsave_state() == BS_AWAKE);
+    CHECK(fake.get_zoom_calls == 0);
+    CHECK(fake.set_zoom_calls == 0);
+}
+
+static void test_wake_retry_then_fail(void)
+{
+    go_deep(cfg_default());
+    fake.rec_mode_follows = 0;
+    unsigned w = now;
+    battsave_key(1, w);
+    run_for(4980);
+    CHECK(battsave_state() == BS_WAKING);
+    tick_at(5000, w);
+    CHECK(battsave_state() == BS_WAKE_FAILED);
+    CHECK(fake.display_on == 1);
+    CHECK(battsave_overlays_paused() == 0);
+    int led_a = fake.led_on;
+    tick_at(5250, w);
+    int led_b = fake.led_on;
+    tick_at(5500, w);
+    int led_c = fake.led_on;
+    CHECK(led_a != led_b);
+    CHECK(led_b != led_c);
+    battsave_key(0, now);
+    now += 20;
+    CHECK(battsave_key(1, now) == 0);
+    CHECK(battsave_state() == BS_AWAKE);
+    CHECK(fake.led_on == 1);
+}
+
 int main(void)
 {
+    test_deep_after_t2();
+    test_t2_never_stays_light();
+    test_t2_le_t1_goes_straight_deep();
+    test_deep_not_allowed();
+    test_deep_blink_pattern();
+    test_deep_wake_restores();
+    test_deep_wake_swallows_until_release();
+    test_zoom_skip_if_moved();
+    test_zoom_disallowed();
+    test_wake_retry_then_fail();
+
     test_disabled_never_sleeps();
     test_light_after_t1();
     test_light_key_passes_and_wakes();

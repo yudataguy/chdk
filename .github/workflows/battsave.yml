@@ -1,0 +1,36 @@
+name: battery-saver
+
+on:
+  push:
+    branches: [battery-saver, trunk]
+  pull_request:
+    branches: [battery-saver, trunk]
+  workflow_dispatch:
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: State machine unit tests
+        run: make -C test/host
+      - name: Probe analyzer tests
+        run: |
+          pip install pytest
+          python3 -m pytest test/test_analyze_probe.py -q
+
+  build-sx50:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sub: [100b, 100c]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build SX50 HS ${{ matrix.sub }}
+        run: tools/battsave/build_sx50.sh ${{ matrix.sub }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chdk-sx50hs-${{ matrix.sub }}
+          path: bin/*.zip
+          if-no-files-found: error
